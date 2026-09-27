@@ -9,6 +9,10 @@ interface ToolbarProps {
   onRatio: (ratio: Ratio) => void;
   onCompare: () => void;
   compareOpen: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 const guideLabels: Array<[GuideKey, string, string]> = [
@@ -27,6 +31,14 @@ export function Toolbar(props: ToolbarProps) {
           <input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) props.onImport(file); event.target.value = ''; }} />
         </label>
         <button className="quiet-button" onClick={props.onDemo}>示例图</button>
+      </div>
+
+      <div className="control-group">
+        <div className="section-label"><span>历史记录</span><small>HISTORY</small></div>
+        <div className="history-row">
+          <button className="history-button" onClick={props.onUndo} disabled={!props.canUndo} title="撤销（Ctrl/Cmd + Z）"><span>↶</span>撤销</button>
+          <button className="history-button" onClick={props.onRedo} disabled={!props.canRedo} title="重做（Ctrl/Cmd + Shift + Z）"><span>↷</span>重做</button>
+        </div>
       </div>
 
       <div className="control-group">
