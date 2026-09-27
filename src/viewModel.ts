@@ -1,14 +1,20 @@
 import { useState, useSyncExternalStore } from 'react';
-import { cropForRatio, makeVariant, moveCrop, resizeCrop } from './domain';
+import { cropForRatio, documentsEqual, makeVariant, moveCrop, resizeCrop } from './domain';
 import { EMPTY_DOCUMENT, type FrameDocument, type GuideKey, type Ratio, type ViewState } from './model';
 import type { FrameRepository } from './repository';
 import type { ImageService } from './service';
 
 type Listener = () => void;
 
+const HISTORY_LIMIT = 100;
+
 export class FrameSenseViewModel {
-  private state: ViewState = { phase: 'loading', document: structuredClone(EMPTY_DOCUMENT), compareOpen: false, notice: '', error: null };
+  private state: ViewState = { phase: 'loading', document: structuredClone(EMPTY_DOCUMENT), compareOpen: false, notice: '', error: null, canUndo: false, canRedo: false };
   private readonly listeners = new Set<Listener>();
+  private history: FrameDocument[] = [];
+  private historyIndex = -1;
+  private gestureActive = false;
+  private gestureRecorded = false;
 
   constructor(private readonly repository: FrameRepository, private readonly imageService: ImageService) {}
 
@@ -20,11 +26,12 @@ export class FrameSenseViewModel {
   };
 
   private patch(next: Partial<ViewState>): void {
-    this.state = { ...this.state, ...next };
+    this.state = { ...this.state, ...next, canUndo: this.historyIndex > 0, canRedo: this.historyIndex < this.history.length - 1 };
     this.listeners.forEach((listener) => listener());
   }
 
-  private persist(document: FrameDocument, notice: string): void {
+  private commit(document: FrameDocument, notice: string, record: boolean): void {
+    if (record) this.record(document);
     this.patch({ document, phase: 'editing', notice, error: null });
     try {
       this.repository.save(document);
@@ -33,10 +40,68 @@ export class FrameSenseViewModel {
     }
   }
 
+  private persist(document: FrameDocument, notice: string): void {
+    this.commit(document, notice, true);
+  }
+
+  private record(document: FrameDocument): void {
+    if (!document.image) return;
+    if (this.gestureActive && this.gestureRecorded) {
+      this.history[this.historyIndex] = document;
+      return;
+    }
+    const current = this.history[this.historyIndex];
+    if (current && documentsEqual(current, document)) return;
+    this.history = this.history.slice(0, this.historyIndex + 1);
+    this.history.push(document);
+    if (this.history.length > HISTORY_LIMIT) this.history.shift();
+    this.historyIndex = this.history.length - 1;
+    if (this.gestureActive) this.gestureRecorded = true;
+  }
+
+  private resetHistory(document: FrameDocument): void {
+    this.history = document.image ? [document] : [];
+    this.historyIndex = this.history.length - 1;
+    this.gestureActive = false;
+    this.gestureRecorded = false;
+  }
+
+  beginGesture(): void {
+    this.gestureActive = true;
+    this.gestureRecorded = false;
+  }
+
+  endGesture(): void {
+    if (this.gestureActive && this.gestureRecorded) {
+      const current = this.history[this.historyIndex];
+      const previous = this.history[this.historyIndex - 1];
+      if (current && previous && documentsEqual(current, previous)) {
+        this.history.pop();
+        this.historyIndex -= 1;
+        this.patch({ document: previous });
+      }
+    }
+    this.gestureActive = false;
+    this.gestureRecorded = false;
+  }
+
+  undo(): void {
+    if (this.gestureActive || this.historyIndex <= 0) return;
+    this.historyIndex -= 1;
+    this.commit(this.history[this.historyIndex], '已撤销一步操作。', false);
+  }
+
+  redo(): void {
+    if (this.gestureActive || this.historyIndex >= this.history.length - 1) return;
+    this.historyIndex += 1;
+    this.commit(this.history[this.historyIndex], '已重做一步操作。', false);
+  }
+
   async initialize(): Promise<void> {
     this.patch({ phase: 'loading', notice: '正在恢复上次工作状态…', error: null });
     try {
       const document = this.repository.load();
+      this.resetHistory(document);
       this.patch({ document, phase: document.image ? 'editing' : 'ready', notice: document.image ? '已恢复上次工作状态' : '欢迎来到 FrameSense，先载入示例或导入图片。' });
     } catch {
       this.patch({ phase: 'error', notice: '未能读取历史状态，可继续新建工作。', error: '本地数据读取失败。' });
@@ -48,6 +113,7 @@ export class FrameSenseViewModel {
     try {
       const image = await this.imageService.readFile(file);
       const document: FrameDocument = { ...structuredClone(EMPTY_DOCUMENT), image };
+      this.resetHistory(document);
       this.persist(document, '图片已载入，可以开始构图。');
     } catch (error) {
       this.patch({ phase: 'error', error: error instanceof Error ? error.message : '图片载入失败。' });
@@ -55,7 +121,9 @@ export class FrameSenseViewModel {
   }
 
   loadDemo(): void {
-    this.persist({ ...structuredClone(EMPTY_DOCUMENT), image: this.imageService.demo() }, '示例图片已载入。');
+    const document = { ...structuredClone(EMPTY_DOCUMENT), image: this.imageService.demo() };
+    this.resetHistory(document);
+    this.persist(document, '示例图片已载入。');
   }
 
   toggleGuide(guide: GuideKey): void {

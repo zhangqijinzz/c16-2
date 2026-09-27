@@ -9,9 +9,11 @@ interface CanvasStageProps {
   onSubject: (x: number, y: number) => void;
   onMoveCrop: (dx: number, dy: number) => void;
   onResizeCrop: (width: number, height: number) => void;
+  onGestureBegin: () => void;
+  onGestureEnd: () => void;
 }
 
-export function CanvasStage({ image, guides, crop, subject, onSubject, onMoveCrop, onResizeCrop }: CanvasStageProps) {
+export function CanvasStage({ image, guides, crop, subject, onSubject, onMoveCrop, onResizeCrop, onGestureBegin, onGestureEnd }: CanvasStageProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ mode: 'move' | 'resize'; x: number; y: number; crop: CropVariant } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -27,6 +29,7 @@ export function CanvasStage({ image, guides, crop, subject, onSubject, onMoveCro
     const point = pointFromEvent(event);
     if (!point) return;
     dragRef.current = { mode, x: point.x, y: point.y, crop };
+    onGestureBegin();
     setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -41,7 +44,12 @@ export function CanvasStage({ image, guides, crop, subject, onSubject, onMoveCro
     dragRef.current = { ...dragRef.current, x: point.x, y: point.y, crop: { ...crop } };
   };
 
-  const stopDrag = () => { dragRef.current = null; setDragging(false); };
+  const stopDrag = () => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    onGestureEnd();
+    setDragging(false);
+  };
 
   const clickStage = (event: PointerEvent) => {
     if (dragging || (event.target as HTMLElement).closest('.crop-frame')) return;

@@ -3,8 +3,12 @@ import type { GuideKey, Ratio } from '../model';
 interface ToolbarProps {
   guides: Record<GuideKey, boolean>;
   ratio: string;
+  canUndo: boolean;
+  canRedo: boolean;
   onImport: (file: File) => void;
   onDemo: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
   onToggleGuide: (guide: GuideKey) => void;
   onRatio: (ratio: Ratio) => void;
   onCompare: () => void;
@@ -27,6 +31,14 @@ export function Toolbar(props: ToolbarProps) {
           <input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) props.onImport(file); event.target.value = ''; }} />
         </label>
         <button className="quiet-button" onClick={props.onDemo}>示例图</button>
+      </div>
+
+      <div className="control-group">
+        <div className="section-label"><span>历史</span><small>HISTORY</small></div>
+        <div className="history-row">
+          <button className="history-button" onClick={props.onUndo} disabled={!props.canUndo} title="撤销（Ctrl/⌘+Z）" aria-label="撤销"><span>↩</span> 撤销</button>
+          <button className="history-button" onClick={props.onRedo} disabled={!props.canRedo} title="重做（Ctrl/⌘+Shift+Z）" aria-label="重做"><span>↪</span> 重做</button>
+        </div>
       </div>
 
       <div className="control-group">

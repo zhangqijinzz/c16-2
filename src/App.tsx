@@ -15,6 +15,24 @@ export default function App() {
   const [viewModel, state] = useFrameSenseViewModel(repository, imageService);
   const [showInfo, setShowInfo] = useState(false);
   useEffect(() => { void viewModel.initialize(); }, [viewModel]);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      const key = event.key.toLowerCase();
+      if (key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) viewModel.redo();
+        else viewModel.undo();
+      } else if (key === 'y') {
+        event.preventDefault();
+        viewModel.redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewModel]);
   const { document } = state;
   const handleImport = (file: File) => { void viewModel.importImage(file); };
 
@@ -26,10 +44,10 @@ export default function App() {
       </header>
       {showInfo && <div className="info-popover"><strong>FrameSense</strong><p>把构图规则变成可以移动、比较和保存的辅助层。所有图片只在本地处理。</p></div>}
       <main className="workspace">
-        <Toolbar guides={document.guides} ratio={document.crop.ratio} onImport={handleImport} onDemo={() => viewModel.loadDemo()} onToggleGuide={(guide) => viewModel.toggleGuide(guide)} onRatio={(ratio: Ratio) => viewModel.setRatio(ratio)} onCompare={() => viewModel.toggleCompare()} compareOpen={state.compareOpen} />
+        <Toolbar guides={document.guides} ratio={document.crop.ratio} canUndo={state.canUndo} canRedo={state.canRedo} onImport={handleImport} onDemo={() => viewModel.loadDemo()} onUndo={() => viewModel.undo()} onRedo={() => viewModel.redo()} onToggleGuide={(guide) => viewModel.toggleGuide(guide)} onRatio={(ratio: Ratio) => viewModel.setRatio(ratio)} onCompare={() => viewModel.toggleCompare()} compareOpen={state.compareOpen} />
         <section className="work-area">
           <div className="work-heading"><div><p className="eyebrow">WORKSPACE / {document.image ? 'EDITING' : 'READY'}</p><h1>{document.image ? document.image.name : '构图工作台'}</h1></div><div className="notice" role="status">{state.error ?? state.notice}</div></div>
-          {!document.image ? <EmptyState onDemo={() => viewModel.loadDemo()} /> : state.compareOpen ? <Comparison image={document.image} variants={document.variants} /> : <CanvasStage image={document.image} guides={document.guides} crop={document.crop} subject={document.subject} onSubject={(x, y) => viewModel.markSubject(x, y)} onMoveCrop={(dx, dy) => viewModel.moveCrop(dx, dy)} onResizeCrop={(width, height) => viewModel.resizeCrop(width, height)} />}
+          {!document.image ? <EmptyState onDemo={() => viewModel.loadDemo()} /> : state.compareOpen ? <Comparison image={document.image} variants={document.variants} /> : <CanvasStage image={document.image} guides={document.guides} crop={document.crop} subject={document.subject} onSubject={(x, y) => viewModel.markSubject(x, y)} onMoveCrop={(dx, dy) => viewModel.moveCrop(dx, dy)} onResizeCrop={(width, height) => viewModel.resizeCrop(width, height)} onGestureBegin={() => viewModel.beginGesture()} onGestureEnd={() => viewModel.endGesture()} />}
           {document.image && !state.compareOpen && <div className="editor-footer"><span><b>当前比例</b> {document.crop.ratio === 'free' ? '自由裁切' : document.crop.ratio}</span><span><b>辅助层</b> {Object.values(document.guides).filter(Boolean).length} 个开启</span><span><b>主体</b> {document.subject ? '已标记' : '点击画面添加'}</span></div>}
         </section>
         {document.image && <VariantList variants={document.variants} image={document.image} current={document.crop} onSave={() => viewModel.saveVariant()} onSelect={(id) => viewModel.selectVariant(id)} />}
